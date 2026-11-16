@@ -1,0 +1,27 @@
+# MySQL do projeto (obrigatório) e DynamoDB Local (opcional, para testes sem custo)
+# Subir:   docker compose up -d
+# Parar:   docker compose down        (os dados do MySQL ficam salvos)
+# Apagar:  docker compose down -v     (apaga também os dados)
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: mysql-bigdata
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=bigdata
+    ports:
+      - "3308:3306"          # se a 3308 estiver ocupada, troque por "3309:3306"
+                             # e defina OLIST_MYSQL_PORT=3309
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --local-infile=1   # habilita o LOAD DATA LOCAL INFILE
+
+  dynamodb:
+    image: amazon/dynamodb-local:latest
+    container_name: dynamodb-local
+    command: "-jar DynamoDBLocal.jar -sharedDb"
+    ports:
+      - "8000:8000"
+
+volumes:
+  mysql_data:

@@ -1,0 +1,888 @@
+\documentclass[12pt]{article}
+
+\usepackage{sbc-template}
+\usepackage[utf8]{inputenc}
+\usepackage[brazil]{babel}
+\usepackage{graphicx}
+\usepackage[hyphens]{url}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{tabularx}
+\usepackage{array}
+
+% colunas que quebram linha, alinhadas à esquerda (tabelas 2, 3 e 4)
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+\newcommand{\cod}[1]{\texttt{#1}}
+
+\sloppy
+
+\title{DynamoDB vs SGBD Relacional: Um Estudo de Caso Comparativo em Big Data}
+
+\author{Gabriel V. Cascaes\inst{1}, Letícia A. de O. Burlinski\inst{1},
+  Vinícius E. D. da Silva\inst{1}, Uriel D. de Oliveira\inst{1}}
+
+\address{Setor de Educação Profissional e Tecnológica\\
+  Universidade Federal do Paraná (UFPR) -- Curitiba, PR -- Brasil
+%  \email{PREENCHER@ufpr.br, PREENCHER@ufpr.br, PREENCHER@ufpr.br, PREENCHER@ufpr.br}
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+The growth in the volume, velocity and variety of data has challenged
+traditional relational Database Management Systems (DBMSs) and driven the
+adoption of NoSQL solutions. This paper presents a comparative case study
+between Amazon DynamoDB, a managed NoSQL database based on the key-value and
+document models, and MySQL, a relational DBMS, in storing and handling Big
+Data. Using the same dataset and the same operations on both technologies, we
+evaluate data modeling, performance, scalability and implementation
+complexity. Preliminary results show that MySQL was faster in all evaluated
+operations, by 10 to 65 times in key-based operations and by up to 500 times
+in queries that require a full table scan in DynamoDB, highlighting
+DynamoDB's dependence on previously modeled access patterns.
+\end{abstract}
+
+\begin{resumo}
+O crescimento do volume, da velocidade e da variedade dos dados tem desafiado
+os Sistemas Gerenciadores de Banco de Dados (SGBDs) relacionais tradicionais e
+impulsionado a adoção de soluções NoSQL. Este artigo apresenta um estudo de
+caso comparativo entre o Amazon DynamoDB, banco de dados NoSQL gerenciado
+baseado nos modelos chave-valor e de documentos, e o MySQL, SGBD relacional,
+no armazenamento e na manipulação de Big Data. A partir do mesmo conjunto de
+dados e das mesmas operações em ambas as tecnologias, são avaliados aspectos
+como modelagem de dados, desempenho, escalabilidade e complexidade de
+implementação. Os resultados preliminares mostram que o MySQL foi mais rápido
+em todas as operações avaliadas, com diferença de 10 a 65 vezes nas operações
+por chave e de até 500 vezes nas consultas que, no DynamoDB, exigem varredura
+completa da tabela, evidenciando a dependência do DynamoDB em padrões de
+acesso previamente modelados.
+\end{resumo}
+
+\section{Introdução}
+
+O crescimento acelerado do volume de dados gerados por aplicações web,
+dispositivos móveis e plataformas de comércio eletrônico tem imposto
+novos desafios ao armazenamento e ao processamento da informação. Esse
+cenário, comumente chamado de \textit{Big Data}, é caracterizado não apenas
+pelo grande volume de dados, mas também pela alta velocidade com que são
+produzidos e consumidos e pela variedade de formatos em que se apresentam.
+Nesse contexto, as organizações passaram a demandar soluções capazes de
+escalar horizontalmente, manter baixa latência sob cargas elevadas e oferecer
+alta disponibilidade a todo momento.
+
+Por décadas, os Sistemas Gerenciadores de Banco de Dados (SGBDs) relacionais
+foram a principal escolha para a persistência de dados, graças ao modelo
+relacional, à linguagem SQL e às garantias transacionais
+ACID. Contudo, à medida que as aplicações passaram a operar em escala global,
+algumas características desse modelo, como o esquema rígido, a dependência de
+junções (JOINs) e a dificuldade de distribuir dados entre múltiplos servidores,
+se tornaram limitantes em determinados cenários. Esse
+contexto impulsionou o surgimento dos bancos de dados NoSQL, que relaxam
+parte dessas garantias em favor de escalabilidade, flexibilidade e desempenho.
+
+Diante disso, este trabalho tem como objetivo avaliar comparativamente o uso
+do Amazon DynamoDB e do MySQL no armazenamento e na manipulação de dados em
+um cenário de \textit{Big Data}. Para isso, foi desenvolvido um estudo de
+caso, no qual o
+mesmo conjunto de dados e as mesmas operações foram executados em ambas as
+tecnologias. A análise busca identificar as diferenças, as vantagens e as
+limitações de cada abordagem, considerando aspectos como modelagem de dados,
+desempenho, escalabilidade e complexidade de implementação.
+
+
+\section{Tecnologia Utilizada}
+\subsection{Amazon DynamoDB}
+
+O Amazon DynamoDB é um serviço de banco de dados NoSQL totalmente gerenciado,
+oferecido pela Amazon Web Services (AWS) desde 2012, que suporta os modelos de
+dados chave-valor e de documentos. Por ser um serviço \textit{serverless}, o
+usuário não administra servidores, sistema operacional, replicação ou
+\textit{backups}: a AWS se encarrega do particionamento automático dos dados,
+da replicação entre múltiplas zonas de disponibilidade e da manutenção da
+infraestrutura. Essa tecnologia tem origem no Dynamo, sistema de armazenamento chave-valor
+desenvolvido internamente pela Amazon \cite{decandia2007dynamo}.
+
+\subsection{Modelagem de Dados}
+
+No DynamoDB, os dados são organizados em \textbf{tabelas}, compostas por
+\textbf{itens}, que por sua vez são compostos por \textbf{atributos}. Um item
+é análogo a uma linha de uma tabela relacional, porém sem esquema fixo: além
+da chave primária, cada item pode possuir um conjunto diferente de atributos.
+Os atributos podem ser de tipos escalares (\textit{string}, número, binário,
+booleano e nulo), de conjunto ou de documento (listas e mapas, que permitem
+estruturas aninhadas semelhantes a JSON). Cada item está limitado a 400~KB
+\cite{awsdynamodbdocs}.
+
+A chave primária é o elemento central da modelagem e pode ser de dois tipos:
+
+\begin{itemize}
+  \setlength{\itemsep}{0pt}
+  \item \textbf{Simples}: composta apenas pela chave de partição
+  (\textit{partition key}), cujo valor passa por uma função \textit{hash}
+  que determina em qual partição física o item será armazenado;
+  \item \textbf{Composta}: formada pela chave de partição e por uma chave de
+  ordenação (\textit{sort key}). Itens com a mesma chave de partição são
+  armazenados juntos e ordenados pela chave de ordenação, o que permite
+  consultas por intervalo (por exemplo, todos os pedidos de um cliente em
+  determinado período).
+\end{itemize}
+
+Para consultar os dados por atributos que não fazem parte da chave primária,
+o DynamoDB oferece índices secundários: o \textbf{índice secundário local}
+(LSI), que mantém a mesma chave de partição e utiliza uma chave de ordenação
+alternativa, e o \textbf{índice secundário global} (GSI), que permite
+definir chaves de partição e de ordenação completamente diferentes das da
+tabela.
+
+A principal diferença em relação ao modelo relacional está na abordagem de
+modelagem. Enquanto no modelo relacional os dados são normalizados com base
+nas entidades e em seus relacionamentos, e as consultas são definidas
+posteriormente com o uso de junções, no DynamoDB a modelagem parte dos
+\textbf{padrões de acesso} da aplicação: primeiro definem-se quais consultas
+serão realizadas e, a partir delas, as chaves e os índices são criados. Como o DynamoDB não suporta junções, é comum a
+desnormalização dos dados e a adoção do \textit{single-table design}, em que
+entidades diferentes e relacionadas são armazenadas em uma mesma tabela,
+distinguidas por prefixos nas chaves, de modo que uma única operação de
+consulta recupere todos os dados necessários.
+
+Essa abordagem garante eficiência nas consultas previstas, mas reduz a
+flexibilidade: consultas não planejadas exigem a criação de novos índices ou
+a varredura completa da tabela (operação \textit{Scan}), que é custosa e
+lenta em grandes volumes de dados.
+
+\subsection{Uso no Mercado e Comparação com o Modelo Relacional}
+
+O DynamoDB é amplamente utilizado em aplicações que exigem alta
+escalabilidade e baixa latência. A própria Amazon o utiliza em sistemas
+críticos de suas operações: durante o Prime Day de 2026, o serviço processou
+mais de 59 trilhões de requisições, com pico de 192 milhões de requisições
+por segundo, mantendo tempos de resposta de poucos milissegundos
+\cite{aws2026primeday}. Fora da Amazon, o serviço é adotado por empresas
+como Disney+, Nike, Experian e GE Aerospace, em setores como varejo,
+\textit{streaming} de mídia, jogos, publicidade digital e serviços
+financeiros.
+
+De forma geral, o DynamoDB tende a ser mais vantajoso que um SGBD relacional
+quando:
+
+\begin{itemize}
+  \setlength{\itemsep}{0pt}
+  \item a aplicação precisa escalar horizontalmente para volumes muito altos
+  de leitura e escrita, com picos imprevisíveis de tráfego;
+  \item os padrões de acesso são conhecidos e estáveis, baseados
+  principalmente em buscas por chave;
+  \item a latência baixa e previsível é um requisito crítico;
+  \item os dados têm estrutura flexível ou variável entre registros;
+  \item a equipe deseja reduzir o esforço de administração de
+  infraestrutura de banco de dados.
+\end{itemize}
+
+\section{Estudo de Caso}
+
+O estudo de caso utiliza o \textit{Brazilian E-Commerce Public Dataset by
+Olist} \cite{olist2018}, conjunto público e anonimizado de cerca de 100 mil
+pedidos realizados entre 2016 e 2018 em \textit{marketplaces} brasileiros. Os
+dados estão distribuídos em nove arquivos CSV, dos quais oito foram
+utilizados: clientes (99.441 registros), produtos (32.951), vendedores
+(3.095), pedidos (99.441), itens dos pedidos (112.650), pagamentos (103.886),
+avaliações (99.224) e geolocalização (cerca de 1 milhão de registros). A
+Figura~\ref{fig:esquema} apresenta os arquivos e seus relacionamentos, e o Anexo~\ref{anexo:modelagem}
+detalha os principais atributos.
+
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.5\linewidth]{image.png}
+    \caption{Esquema de dados do conjunto Olist. Fonte: \cite{olist2018}}
+    \label{fig:esquema}
+\end{figure}
+
+\subsection{Questões Comparativas}
+
+As mesmas questões foram executadas nos dois bancos. Elas cobrem operações em
+que o DynamoDB tende a ser vantajoso (acessos por chave) e operações em que
+tende a ser limitado (buscas textuais, junções e agregações). Entre
+parênteses, o resultado esperado:
+
+\begin{enumerate}
+  \setlength{\itemsep}{0pt}
+  \item \textbf{Acesso por chave:} dados de um pedido, dado o seu ID (o
+  pedido, seus itens, pagamentos e avaliação).
+  \item \textbf{Inserção:} criação de um pedido com itens e pagamento
+  (registros gravados de forma atômica).
+  \item \textbf{Atualização:} alteração do status de um pedido (um registro
+  alterado).
+  \item \textbf{Carga:} tempo para carregar o conjunto completo (o mesmo
+  número de registros nos dois bancos).
+  \item \textbf{Filtro por intervalo:} pedidos entregues em janeiro de 2018
+  (um registro por pedido).
+  \item \textbf{Agregação em uma tabela:} valor médio, mínimo e máximo pago em
+  cada forma de pagamento, da maior média para a menor (uma linha por forma).
+  \item \textbf{Busca de texto em uma tabela:} avaliações que mencionam
+  ``atraso'' no comentário (as avaliações com o termo).
+  \item \textbf{Busca de texto em duas tabelas:} pedidos de clientes de
+  cidades cujo nome contém ``sao'' (um registro por pedido).
+  \item \textbf{Agregação em três tabelas:} preço médio, mínimo e máximo dos
+  itens por UF do cliente, da maior média para a menor (uma linha por UF).
+\end{enumerate}
+
+\section{Resultados e Avaliações}
+\subsection{Configuração do Ambiente}
+Os experimentos foram executados em uma máquina com processador Intel Core i5-8250U (até 3,40~GHz), 16~GB de memória RAM
+e sistema operacional Ubuntu 22.04. O SGBD relacional
+utilizado foi o MySQL, executado localmente. O Amazon DynamoDB foi utilizado na região us-east-2.
+
+
+\subsection{Modelagem dos Dados}
+
+Conforme a Seção~2.2, no MySQL o esquema foi derivado das entidades e, no
+DynamoDB, dos padrões de acesso da Seção~3.1. Chaves, índices e operações de
+cada questão estão detalhados no Anexo~\ref{anexo:modelagem}.
+
+\textbf{MySQL.} Esquema normalizado com uma tabela por arquivo do Olist, chaves
+estrangeiras entre pedidos, itens, pagamentos, avaliações e clientes,
+identificadores em \texttt{CHAR(32)}, datas em \texttt{DATETIME} e valores em
+\texttt{DECIMAL(10,2)}. Além dos índices das chaves, foram criados um índice em
+\texttt{order\_delivered\_customer\_date}, para o filtro por data de entrega, e
+um índice composto (\texttt{payment\_type}, \texttt{payment\_value}), para a
+agregação por forma de pagamento.
+
+\textbf{DynamoDB.} Adotou-se o \textit{single-table design}: uma única tabela,
+\texttt{Olist}, no modo sob demanda, com chave composta \texttt{PK}/\texttt{SK}
+e prefixos que identificam cada entidade. O pedido é o agregado central: o
+item de metadados (\texttt{SK = METADATA}), os itens (\texttt{ITEM\#001},
+\ldots), os pagamentos e a avaliação compartilham a chave
+\texttt{PK = ORDER\#<order\_id>}, de modo que uma única \texttt{Query}
+recupera o pedido completo. A cidade e a UF do cliente foram desnormalizadas no
+item do pedido, e a categoria do produto, em cada item. Dois índices
+secundários globais, com projeção \texttt{KEYS\_ONLY}, atendem às consultas que
+não partem do pedido: o GSI1, esparso, agrupa os pedidos entregues por mês
+(\texttt{DELIVERED\#<AAAA-MM>}), ordenados pela data de entrega; o GSI2 agrupa
+os pagamentos por forma de pagamento (\texttt{PAYTYPE\#<tipo>}), ordenados pelo
+valor pago. As buscas de texto e a agregação por UF não têm índice
+correspondente e exigem \textit{Scan}.
+
+\subsection{Resultados Preliminares}
+
+Os resultados a seguir são preliminares, obtidos em uma máquina com
+Windows~11, com o MySQL local em contêiner Docker e o DynamoDB na região
+\texttt{us-east-2}, sem a geolocalização; os testes definitivos serão
+repetidos na máquina da Seção~4.1, com o conjunto completo. Em todas as
+questões, os dois bancos retornaram o mesmo número de linhas, o que confirma a
+equivalência das implementações.
+
+\textbf{Carga.} O MySQL carregou cerca de 550 mil registros em 10,3~s com
+\texttt{LOAD DATA LOCAL INFILE}, enquanto o DynamoDB levou 540,2~s, cerca de
+52 vezes mais, com uma taxa aproximada de 1.000 itens por segundo
+(Tabela~\ref{tab:carga}, no Anexo~\ref{anexo:resultados}). A diferença decorre
+do limite de 25 itens por requisição \texttt{BatchWriteItem} e da latência de
+rede entre o cliente e a região da AWS, ausente no MySQL local.
+
+\textbf{Consultas.} A Tabela~\ref{tab:consultas} apresenta a média de três
+execuções de cada questão e a operação usada no DynamoDB; o número de linhas
+retornadas está no Anexo~\ref{anexo:resultados}.
+
+\begin{table}[htbp]
+\centering
+\caption{Tempo médio das consultas (ms, média de 3 execuções)}
+\label{tab:consultas}
+\footnotesize
+\begin{tabular}{|l|l|r|r|r|}
+\hline
+\textbf{Questão} & \textbf{Operação no DynamoDB} & \textbf{MySQL} & \textbf{DynamoDB} & \textbf{Razão} \\ \hline
+Acesso por chave             & \texttt{Query}             & 9,25   & 599,70    & 65$\times$  \\ \hline
+Inserção de pedido           & \texttt{TransactWriteItems}& 17,52  & 174,83    & 10$\times$  \\ \hline
+Atualização de status        & \texttt{UpdateItem}        & 11,26  & 161,45    & 14$\times$  \\ \hline
+Entregues em jan/2018        & \texttt{Query} (GSI1)      & 43,71  & 1.541,95  & 35$\times$  \\ \hline
+Estatísticas por pagamento   & \texttt{Query} (GSI2)      & 45,19  & 22.441,57 & 497$\times$ \\ \hline
+Busca de texto (1 tabela)    & \texttt{Scan}              & 69,08  & 23.044,77 & 334$\times$ \\ \hline
+Busca de texto (2 tabelas)   & \texttt{Scan}              & 295,94 & 23.674,01 & 80$\times$  \\ \hline
+Agregação por UF (3 tabelas) & \texttt{Scan}              & 775,44 & 40.423,14 & 52$\times$  \\ \hline
+\end{tabular}
+\end{table}
+
+
+As operações por chave foram resolvidas pelo DynamoDB com uma única
+requisição cada, em 160 a 600~ms, tempo dominado pela ida e volta até a região
+da AWS, e não pelo processamento no banco; o valor maior do acesso por chave,
+primeira operação da bateria, provavelmente inclui a abertura da conexão. A
+consulta de entregas de janeiro de 2018 mostra o efeito do GSI1: o DynamoDB
+leu apenas as 6.597 chaves do mês. Já as estatísticas por forma de pagamento,
+mesmo com o GSI2, exigiram ler as cerca de 104 mil entradas do índice e
+calcular média, mínimo e máximo na aplicação, pois o DynamoDB não oferece
+funções de agregação.
+
+As buscas de texto e a agregação por UF dependem do \textit{Scan}, que lê a
+tabela inteira (cerca de 550 mil itens) antes de aplicar o filtro: seu tempo,
+entre 23 e 40~s, é proporcional ao tamanho da tabela, e não ao resultado
+(305 e 21.092 linhas levaram o mesmo tempo nas duas buscas). A
+desnormalização eliminou as junções, mas não a varredura. No MySQL, as mesmas
+consultas levaram menos de 1~s com \texttt{LIKE}, \texttt{JOIN} e
+\texttt{GROUP BY}. Ressalta-se que o experimento compara um banco local com um
+serviço remoto, com um único cliente sequencial, cenário que não explora a
+escalabilidade horizontal e a latência estável sob alta concorrência do
+DynamoDB e penaliza cada requisição com a latência de rede.
+
+\section{Conclusão}
+
+Os resultados preliminares confirmam a hipótese do estudo: no DynamoDB, o
+desempenho depende de a consulta ter sido prevista na modelagem. Operações por
+chave e consultas atendidas por índices secundários foram resolvidas com poucas
+requisições, enquanto buscas textuais, junções e agregações exigiram a leitura
+completa da tabela e processamento na aplicação, ficando de 50 a 500 vezes mais
+lentas que no MySQL. Para cargas analíticas e consultas não planejadas, o SGBD
+relacional mostrou-se mais simples e eficiente; o DynamoDB é recomendado quando
+os padrões de acesso são conhecidos, baseados em chave, e a aplicação exige
+escalabilidade e disponibilidade sem administração de infraestrutura.
+
+\bibliographystyle{sbc}
+\bibliography{sbc-template}
+
+\newpage
+\appendix
+\section{Guia de Uso do Amazon DynamoDB na AWS}
+\label{anexo:guia}
+
+Este anexo é um guia prático para criar, carregar, consultar, monitorar e
+remover tabelas do Amazon DynamoDB em uma conta da AWS, pelo console web, pela
+linha de comando (AWS CLI) e por programas em Python (biblioteca
+\texttt{boto3}). Os exemplos usam a tabela \texttt{Olist} deste trabalho.
+
+\subsection{Acesso à Conta e Credenciais}
+
+\textbf{Console e região.} O DynamoDB é acessado pelo console da AWS
+(\texttt{console.aws.amazon.com}), pesquisando ``DynamoDB'' na barra de busca.
+As tabelas pertencem a uma região: uma tabela criada em
+\texttt{us-east-2} (Ohio) não aparece quando o console está em outra região.
+A região atual é exibida no canto superior direito do console e no endereço
+da página (\texttt{region=us-east-2}).
+
+\textbf{Permissões.} O acesso é controlado pelo IAM (\textit{Identity and
+Access Management}). Recomenda-se não usar o usuário raiz da conta, e sim um
+usuário ou papel com as permissões necessárias, por exemplo a política
+gerenciada \texttt{AmazonDynamoDBFullAccess} ou uma política restrita às
+ações usadas: \texttt{CreateTable}, \texttt{DescribeTable},
+\texttt{ListTables}, \texttt{DeleteTable}, \texttt{PutItem},
+\texttt{BatchWriteItem}, \texttt{UpdateItem}, \texttt{DeleteItem},
+\texttt{GetItem}, \texttt{Query} e \texttt{Scan}.
+
+\textbf{AWS CLI.} Após instalar a AWS CLI versão 2, há duas formas de
+configurar as credenciais:
+
+\begin{itemize}
+  \item \texttt{aws login}: abre o navegador para autenticação com a conta da
+  AWS e gera credenciais temporárias, renovadas automaticamente. Para que
+  programas em Python usem esse login, é necessário o pacote
+  \texttt{botocore[crt]};
+  \item \texttt{aws configure}: grava a chave de acesso (\textit{Access Key ID}
+  e \textit{Secret Access Key}) de um usuário IAM, gerada no console em IAM
+  $\rightarrow$ Usuários $\rightarrow$ Credenciais de segurança.
+\end{itemize}
+
+As credenciais nunca devem ser escritas no código, em capturas de tela ou em
+repositórios. Para testar a configuração:
+
+{\footnotesize
+\begin{verbatim}
+aws dynamodb list-tables --region us-east-2
+\end{verbatim}
+}
+
+\subsection{Criação de uma Tabela}
+
+\textbf{Pelo console.} Em DynamoDB $\rightarrow$ Tabelas $\rightarrow$
+\textit{Criar tabela}:
+
+\begin{enumerate}
+  \item informar o nome da tabela e a chave de partição (por exemplo,
+  \texttt{PK}, do tipo \textit{String});
+  \item opcionalmente, informar a chave de ordenação (\texttt{SK});
+  \item em \textit{Configurações da tabela}, escolher \textit{Personalizar}
+  para definir o modo de capacidade (sob demanda ou provisionado) e criar
+  índices secundários globais;
+  \item confirmar em \textit{Criar tabela} e aguardar o status
+  \textit{Ativo}.
+\end{enumerate}
+
+\textbf{Pela AWS CLI.} O comando abaixo cria a tabela \texttt{Olist} com
+chave composta, capacidade sob demanda e o índice GSI1:
+
+{\footnotesize
+\begin{verbatim}
+aws dynamodb create-table --table-name Olist \
+  --region us-east-2 --billing-mode PAY_PER_REQUEST \
+  --attribute-definitions \
+      AttributeName=PK,AttributeType=S \
+      AttributeName=SK,AttributeType=S \
+      AttributeName=GSI1PK,AttributeType=S \
+      AttributeName=GSI1SK,AttributeType=S \
+  --key-schema AttributeName=PK,KeyType=HASH \
+               AttributeName=SK,KeyType=RANGE \
+  --global-secondary-indexes '[{"IndexName":"GSI1",
+      "KeySchema":[{"AttributeName":"GSI1PK","KeyType":"HASH"},
+                   {"AttributeName":"GSI1SK","KeyType":"RANGE"}],
+      "Projection":{"ProjectionType":"KEYS_ONLY"}}]'
+
+aws dynamodb wait table-exists --table-name Olist \
+  --region us-east-2
+\end{verbatim}
+}
+
+Apenas os atributos usados em chaves e índices são declarados na criação; os
+demais são definidos livremente em cada item.
+
+\subsection{Boas Práticas de Modelagem das Chaves}
+
+\begin{itemize}
+  \item Partir das consultas da aplicação: cada padrão de acesso deve ser
+  atendido por uma \texttt{Query} na tabela ou em um índice.
+  \item Escolher chaves de partição com muitos valores distintos e acesso bem
+  distribuído, evitando concentrar o tráfego em poucas chaves
+  (``partições quentes'').
+  \item Usar prefixos nos valores das chaves (\texttt{ORDER\#},
+  \texttt{ITEM\#}) para guardar entidades diferentes na mesma tabela e
+  preencher números com zeros à esquerda (\texttt{ITEM\#001}), pois a chave
+  de ordenação do tipo texto é comparada caractere a caractere.
+  \item Guardar datas no formato ISO~8601 (\texttt{AAAA-MM-DD hh:mm:ss}), cuja
+  ordem alfabética coincide com a cronológica.
+  \item Criar índices secundários globais para os acessos que não partem da
+  chave principal; um índice esparso, preenchido só nos itens relevantes,
+  ocupa menos espaço. A projeção \texttt{KEYS\_ONLY} reduz o tamanho do
+  índice quando bastam as chaves.
+  \item Respeitar os limites: 400~KB por item e, por padrão, até 20 índices
+  secundários globais por tabela.
+\end{itemize}
+
+\subsection{Gravação de Dados}
+
+\textbf{Pelo console.} Em \textit{Explorar itens} $\rightarrow$
+\textit{Criar item}, os atributos podem ser preenchidos em formulário ou em
+JSON. É útil para testes, não para cargas.
+
+\textbf{Item a item (\texttt{PutItem}).} Grava ou substitui um item inteiro:
+
+{\footnotesize
+\begin{verbatim}
+aws dynamodb put-item --table-name Olist --region us-east-2 \
+  --item '{"PK":{"S":"ORDER#abc"},"SK":{"S":"METADATA"},
+           "order_status":{"S":"delivered"}}'
+\end{verbatim}
+}
+
+\textbf{Em massa (\texttt{BatchWriteItem}).} Grava até 25 itens por
+requisição. Em Python, o \texttt{batch\_writer} agrupa os itens e reenvia
+automaticamente os que a AWS não processar:
+
+{\footnotesize
+\begin{verbatim}
+import boto3
+dynamodb = boto3.resource("dynamodb", region_name="us-east-2")
+tabela = dynamodb.Table("Olist")
+with tabela.batch_writer() as lote:
+    for item in itens:          # cada item é um dicionário Python
+        lote.put_item(Item=item)
+\end{verbatim}
+}
+
+Como cada requisição atravessa a rede, a carga é acelerada com vários envios
+em paralelo. Valores numéricos devem ser do tipo \texttt{Decimal}, e não
+\texttt{float}. Para volumes muito grandes, a AWS também permite criar uma
+tabela a partir de arquivos armazenados no Amazon S3 (\textit{Importar do
+S3}), sem consumir capacidade de escrita.
+
+\subsection{Leitura de Dados}
+
+\begin{itemize}
+  \item \textbf{GetItem}: lê um item pela chave primária completa.
+  \item \textbf{Query}: lê os itens de uma mesma chave de partição, na tabela
+  ou em um índice, podendo filtrar a chave de ordenação por intervalo
+  (\texttt{BETWEEN}) ou prefixo (\texttt{begins\_with}). É a forma eficiente
+  de leitura.
+  \item \textbf{Scan}: lê a tabela inteira. O filtro
+  (\texttt{FilterExpression}) é aplicado depois da leitura, então o tempo e o
+  custo dependem do tamanho da tabela, e não do resultado.
+\end{itemize}
+
+{\footnotesize
+\begin{verbatim}
+aws dynamodb query --table-name Olist --region us-east-2 \
+  --key-condition-expression "PK = :pk" \
+  --expression-attribute-values '{":pk":{"S":"ORDER#abc"}}'
+
+aws dynamodb query --table-name Olist --region us-east-2 \
+  --index-name GSI1 \
+  --key-condition-expression "GSI1PK = :m" \
+  --expression-attribute-values '{":m":{"S":"DELIVERED#2018-01"}}'
+\end{verbatim}
+}
+
+Em Python, com paginação:
+
+{\footnotesize
+\begin{verbatim}
+from boto3.dynamodb.conditions import Key
+kw = dict(KeyConditionExpression=Key("PK").eq("ORDER#abc"))
+resp = tabela.query(**kw)
+itens = resp["Items"]
+while "LastEvaluatedKey" in resp:     # resposta limitada a 1 MB
+    resp = tabela.query(**kw,
+        ExclusiveStartKey=resp["LastEvaluatedKey"])
+    itens += resp["Items"]
+\end{verbatim}
+}
+
+Cuidados na leitura:
+
+\begin{itemize}
+  \item cada resposta traz no máximo 1~MB; o restante deve ser buscado com
+  \texttt{LastEvaluatedKey}, como acima;
+  \item \texttt{ProjectionExpression} limita os atributos retornados e reduz
+  o tráfego;
+  \item atributos com nomes reservados (como \texttt{status} ou
+  \texttt{name}) devem ser referenciados por nomes substitutos, em
+  \texttt{ExpressionAttributeNames};
+  \item o console oferece também o \textit{Editor PartiQL}, que aceita
+  comandos semelhantes ao SQL (\texttt{SELECT}, \texttt{INSERT},
+  \texttt{UPDATE}); um \texttt{SELECT} sem condição na chave é executado
+  como \textit{Scan}.
+\end{itemize}
+
+\subsection{Atualizações e Transações}
+
+\texttt{UpdateItem} altera atributos de um item sem regravá-lo inteiro:
+
+{\footnotesize
+\begin{verbatim}
+tabela.update_item(
+    Key={"PK": "ORDER#abc", "SK": "METADATA"},
+    UpdateExpression="SET #s = :s",
+    ExpressionAttributeNames={"#s": "order_status"},
+    ExpressionAttributeValues={":s": "shipped"})
+\end{verbatim}
+}
+
+\texttt{TransactWriteItems} grava, atualiza ou remove até 100 itens de forma
+atômica: ou todas as operações são aplicadas, ou nenhuma. Neste trabalho,
+foi usado para inserir um pedido junto com seus itens e pagamento.
+
+\subsection{Monitoramento}
+
+\begin{itemize}
+  \item \textbf{Explorar itens}: mostra os itens da tabela e permite filtrar
+  e consultar pelo console.
+  \item \textbf{Visão geral}: exibe chaves, índices, modo de capacidade,
+  número de itens e tamanho. Esses dois últimos valores são atualizados apenas
+  a cada seis horas, aproximadamente; logo após uma carga, podem aparecer
+  zerados. A opção \textit{Obter contagem de itens em tempo real} faz a
+  contagem na hora, mas lê a tabela inteira.
+  \item \textbf{Monitorar}: gráficos do Amazon CloudWatch com a capacidade de
+  leitura e escrita consumida, a latência e as requisições limitadas
+  (\textit{throttled}).
+\end{itemize}
+
+\subsection{Custos}
+
+\begin{itemize}
+  \item \textbf{Sob demanda} (\textit{on-demand}): cobra-se por requisição
+  de leitura e escrita, sem planejamento de capacidade. Indicado para cargas
+  variáveis e para experimentos como este.
+  \item \textbf{Provisionado}: define-se a capacidade de leitura (RCU) e de
+  escrita (WCU) por segundo, com escalonamento automático opcional. Uma RCU
+  corresponde a uma leitura fortemente consistente de até 4~KB por segundo
+  (ou duas eventualmente consistentes); uma WCU, a uma escrita de até 1~KB.
+  \item Cobra-se também o armazenamento da tabela e dos índices.
+  \item O \textit{Scan} é a operação mais cara, pois cada execução consome
+  leitura proporcional ao tamanho da tabela.
+  \item Recomenda-se configurar um alerta de orçamento no AWS Budgets e
+  conferir as condições vigentes de créditos e nível gratuito da conta.
+\end{itemize}
+
+\subsection{Remoção dos Recursos}
+
+Ao final dos testes, a tabela deve ser excluída, pelo console (selecionar a
+tabela $\rightarrow$ \textit{Excluir}) ou pela CLI. A exclusão remove também
+os índices e não pode ser desfeita:
+
+{\footnotesize
+\begin{verbatim}
+aws dynamodb delete-table --table-name Olist --region us-east-2
+\end{verbatim}
+}
+
+\subsection{Desenvolvimento Local}
+
+Para desenvolver e testar sem custo, a AWS distribui o DynamoDB Local, que
+pode ser executado em contêiner Docker e aceita as mesmas chamadas da API:
+
+{\footnotesize
+\begin{verbatim}
+docker run -d -p 8000:8000 amazon/dynamodb-local
+aws dynamodb list-tables --endpoint-url http://localhost:8000
+\end{verbatim}
+}
+
+Em Python, basta informar \texttt{endpoint\_url="http://localhost:8000"} ao
+criar o recurso. O DynamoDB Local não reproduz o desempenho nem a
+escalabilidade do serviço; por isso, os resultados deste trabalho foram
+medidos na AWS.
+
+\subsection{Configuração Utilizada neste Trabalho}
+
+Neste trabalho, foi criada uma única tabela, \texttt{Olist}, na região
+\texttt{us-east-2}, no modo sob demanda, com chave composta
+(\texttt{PK}, \texttt{SK}) e dois índices secundários globais com projeção
+\texttt{KEYS\_ONLY}: GSI1 (pedidos entregues por mês) e GSI2 (pagamentos por
+tipo). A carga e as consultas foram feitas pelo programa
+\texttt{olist\_bench\_v2.py}, disponível em [LINK DO REPOSITÓRIO], usando as
+operações descritas neste anexo.
+
+
+\clearpage
+\section{Detalhamento do Conjunto de Dados e da Modelagem}
+\label{anexo:modelagem}
+
+\subsection{Principais Atributos}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Principais atributos do conjunto de dados}
+  \label{tab:atributos}
+  \begin{tabularx}{\textwidth}{l l X}
+    \toprule
+    \textbf{Categoria do Atributo} & \textbf{Atributo Principal} & \textbf{Descrição / Papel no Negócio} \\
+    \midrule
+    \multirow{3}{*}{Identificadores}
+      & \texttt{order\_id}    & Chave única que identifica cada pedido realizado. \\
+      & \texttt{customer\_id} & Identificador da relação do cliente com a compra específica. \\
+      & \texttt{product\_id}  & Identificador único do produto comercializado. \\
+    \midrule
+    \multirow{2}{*}{Dados Temporais}
+      & \texttt{purchase\_timestamp}      & Data e hora exata em que o pedido foi efetuado pelo cliente. \\
+      & \texttt{delivered\_customer\_date} & Data e hora real de entrega do pedido ao cliente final. \\
+    \midrule
+    \multirow{3}{*}{Valores Financeiros}
+      & \texttt{price}         & Preço unitário do produto comercializado no item. \\
+      & \texttt{freight\_value} & Valor do frete cobrado pelo transporte do item. \\
+      & \texttt{payment\_value} & Valor monetário total pago através de uma determinada forma de pagamento. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Modelo Relacional (MySQL)}
+
+No MySQL, adotou-se um esquema normalizado que reproduz a estrutura original
+do dataset (Figura~\ref{fig:esquema}), com uma tabela para cada arquivo:
+\texttt{customers}, \texttt{orders}, \texttt{order\_items},
+\texttt{order\_payments}, \texttt{order\_reviews}, \texttt{products},
+\texttt{sellers} e \texttt{geolocation}. Os identificadores do Olist são
+cadeias hexadecimais de 32 caracteres e foram armazenados como
+\texttt{CHAR(32)}; os campos temporais, como \texttt{DATETIME}; e os
+valores financeiros, como \texttt{DECIMAL(10,2)}, evitando erros de
+arredondamento de tipos de ponto flutuante. As chaves e os índices
+definidos são apresentados na Tabela~\ref{tab:mysql}.
+
+
+
+\begin{table}[htbp]
+\centering
+\caption{Chaves e índices do modelo relacional}
+\label{tab:mysql}
+\footnotesize
+\begin{tabularx}{\textwidth}{|>{\raggedright\arraybackslash}p{2.4cm}|L|L|L|}
+\hline
+\textbf{Tabela} & \textbf{Chave primária} & \textbf{Chaves estrangeiras} & \textbf{Índices adicionais} \\ \hline
+\cod{orders} & \cod{order\_id} & \cod{customer\_id} & \cod{order\_delivered\_\allowbreak customer\_date} \\ \hline
+\cod{order\_items} & (\cod{order\_id}, \cod{order\_item\_id}) & \cod{order\_id}, \cod{product\_id}, \cod{seller\_id} & -- \\ \hline
+\cod{order\_\allowbreak payments} & (\cod{order\_id}, \cod{payment\_\allowbreak sequential}) & \cod{order\_id} & (\cod{payment\_type}, \cod{payment\_value}) \\ \hline
+\cod{order\_\allowbreak reviews} & (\cod{review\_id}, \cod{order\_id}) & \cod{order\_id} & -- \\ \hline
+\cod{customers} & \cod{customer\_id} & -- & \cod{customer\_zip\_\allowbreak code\_prefix} \\ \hline
+\cod{products} & \cod{product\_id} & -- & -- \\ \hline
+\cod{sellers} & \cod{seller\_id} & -- & \cod{seller\_zip\_\allowbreak code\_prefix} \\ \hline
+\cod{geolocation} & \cod{geo\_id} (substituta, \cod{AUTO\_\allowbreak INCREMENT}) & -- & \cod{geolocation\_\allowbreak zip\_code\_prefix} \\ \hline
+\end{tabularx}
+\end{table}
+ 
+Duas particularidades do dataset influenciaram o esquema. Primeiro, o
+atributo \texttt{review\_id} não é único no arquivo de avaliações, o que
+exigiu uma chave primária composta com \texttt{order\_id}. Segundo, a tabela
+\texttt{geolocation} não possui chave natural, pois um mesmo prefixo de CEP
+aparece em várias linhas com coordenadas diferentes; por isso, foi criada
+uma chave substituta. Pelo mesmo motivo, e porque alguns prefixos de CEP de
+clientes e vendedores não constam nessa tabela, a ligação por
+\texttt{zip\_code\_prefix} foi mantida apenas por índices, sem restrição de
+chave estrangeira.
+ 
+Além dos índices criados automaticamente para chaves primárias e
+estrangeiras, foram definidos dois índices voltados às consultas da
+Seção~3.1: um sobre \texttt{order\_delivered\_customer\_date}, que permite
+filtrar pedidos por intervalo de datas sem varrer a tabela, e um índice
+composto (\texttt{payment\_type}, \texttt{payment\_value}) em
+\texttt{order\_payments}, que cobre integralmente a consulta de agregação por
+forma de pagamento.
+ 
+\subsection{Modelo NoSQL (DynamoDB)}
+
+ 
+No DynamoDB, adotou-se o \textit{single-table design}: todas as entidades
+foram armazenadas em uma única tabela, \texttt{Olist}, com chave primária
+composta por atributos genéricos \texttt{PK} (chave de partição) e
+\texttt{SK} (chave de ordenação). O tipo de cada item é identificado por
+prefixos nos valores das chaves, conforme a Tabela~\ref{tab:dynamo}.
+ 
+\begin{table}[htbp]
+\centering
+\caption{Tipos de item na tabela única do DynamoDB}
+\label{tab:dynamo}
+\footnotesize
+\begin{tabularx}{\textwidth}{|>{\raggedright\arraybackslash}p{2.7cm}|>{\raggedright\arraybackslash}p{2.9cm}|>{\raggedright\arraybackslash}p{2.6cm}|L|}
+\hline
+\textbf{Entidade} & \textbf{PK} & \textbf{SK} & \textbf{Principais atributos} \\ \hline
+Pedido & \cod{ORDER\#\allowbreak<order\_id>} & \cod{METADATA} & status, datas, \cod{customer\_id}, cidade e UF do cliente, \cod{GSI1PK}, \cod{GSI1SK} \\ \hline
+Item do pedido & \cod{ORDER\#\allowbreak<order\_id>} & \cod{ITEM\#<nnn>} & \cod{product\_id}, \cod{seller\_id}, preço, frete, categoria do produto \\ \hline
+Pagamento & \cod{ORDER\#\allowbreak<order\_id>} & \cod{PAYMENT\#\allowbreak<nnn>} & tipo, parcelas, valor, \cod{GSI2PK}, \cod{GSI2SK} \\ \hline
+Avaliação & \cod{ORDER\#\allowbreak<order\_id>} & \cod{REVIEW\#\allowbreak<review\_id>} & nota, comentário, datas \\ \hline
+Cliente & \cod{CUSTOMER\#\allowbreak<customer\_id>} & \cod{PROFILE} & \cod{customer\_unique\_id}, CEP, cidade, UF \\ \hline
+Produto & \cod{PRODUCT\#\allowbreak<product\_id>} & \cod{PROFILE} & categoria, dimensões, peso \\ \hline
+Vendedor & \cod{SELLER\#\allowbreak<seller\_id>} & \cod{PROFILE} & CEP, cidade, UF \\ \hline
+\hspace{0pt}Geolocalização & \cod{GEO\#\allowbreak<zip\_prefix>} & \cod{<sequencial>} & latitude, longitude, cidade, UF \\ \hline
+\end{tabularx}
+\end{table}
+ 
+O pedido funciona como agregado central do modelo: o item de metadados, os
+itens comprados, os pagamentos e a avaliação compartilham a mesma chave de
+partição (\texttt{ORDER\#<order\_id>}) e ficam fisicamente armazenados
+juntos. Assim, uma única operação \texttt{Query} recupera todos os dados de
+um pedido, o que no modelo relacional exige consultar quatro tabelas. Os
+números sequenciais nas chaves de ordenação foram preenchidos com zeros à
+esquerda (por exemplo, \texttt{ITEM\#001}) para que a ordenação
+lexicográfica coincida com a numérica.
+ 
+Como o DynamoDB não realiza junções, alguns atributos foram
+desnormalizados: a cidade e a UF do cliente foram copiadas para o item de
+metadados do pedido, e a categoria do produto foi copiada para cada item do
+pedido. Isso evita leituras adicionais no acesso por chave, ao custo de
+redundância e de possível inconsistência caso esses atributos sejam
+alterados, cenário considerado improvável para dados históricos de vendas.
+Clientes, produtos, vendedores e geolocalização foram mantidos como itens
+próprios para que a carga do dataset completo seja equivalente nas duas
+tecnologias, embora nenhum padrão de acesso avaliado dependa deles
+diretamente.
+ 
+Quanto aos tipos, datas foram armazenadas como \textit{strings} no formato
+ISO~8601 (\texttt{AAAA-MM-DD hh:mm:ss}), que preserva a ordem cronológica na
+comparação lexicográfica e permite consultas por intervalo na chave de
+ordenação, e valores financeiros foram armazenados com o tipo
+\textit{Number}. Todos os itens ficam muito abaixo do limite de 400~KB. 
+
+Para atender às consultas que não partem do identificador do pedido, foram
+criados dois índices secundários globais:
+ 
+\begin{itemize}
+\item \textbf{GSI1 (entregas por mês):} chave de partição
+\texttt{GSI1PK = DELIVERED\#<AAAA-MM>} e chave de ordenação
+\texttt{GSI1SK = order\_delivered\_customer\_date}. Os atributos só são
+preenchidos em pedidos com data de entrega, o que torna o índice esparso: pedidos não entregues não ocupam espaço nem consomem
+capacidade nele. A consulta de pedidos entregues em janeiro de 2018 se
+reduz a uma \texttt{Query} com \texttt{GSI1PK = DELIVERED\#2018-01}.
+A granularidade mensal foi escolhida para distribuir os pedidos entre
+várias partições, evitando concentrar todo o índice em uma única chave.
+Assim como o GSI2, o índice utiliza a projeção \texttt{KEYS\_ONLY}.
+ 
+\item \textbf{GSI2 (pagamentos por tipo):} chave de partição
+\texttt{GSI2PK = PAYTYPE\#<payment\_type>} e chave de ordenação
+\texttt{GSI2SK = payment\_value}, com projeção \texttt{KEYS\_ONLY}. Como o
+valor pago é a própria chave de ordenação, o índice contém tudo o que a
+agregação precisa, e cada item projetado é pequeno, reduzindo o consumo de
+capacidade de leitura. Os valores mínimo e máximo de cada tipo podem ser
+obtidos com uma \texttt{Query} limitada a um item em ordem crescente ou
+decrescente; a média, por outro lado, exige ler todas as entradas do tipo.
+\end{itemize}
+ 
+ 
+A consulta de agregação evidencia a principal limitação do modelo: o
+DynamoDB não oferece operações como \texttt{GROUP BY}, \texttt{AVG},
+\texttt{MIN} ou \texttt{MAX}. A agregação foi, portanto, realizada na
+aplicação, com uma \texttt{Query} no GSI2 para cada forma de pagamento,
+seguida do cálculo das estatísticas e da ordenação pela média no cliente.
+ 
+ 
+Por fim, a tabela do DynamoDB foi configurada no modo de capacidade
+\textit{on-demand}, no qual a AWS ajusta automaticamente a vazão conforme a
+carga, dispensando o dimensionamento prévio de unidades de leitura e
+escrita e evitando que limites de capacidade provisionada interfiram nas
+medições.
+
+\subsection{Operações por Questão}
+
+A Tabela~\ref{tab:padroes} resume como cada questão comparativa é atendida em
+cada tecnologia.
+
+\begin{table}[htbp]
+\centering
+\caption{Operações utilizadas em cada questão comparativa}
+\label{tab:padroes}
+\footnotesize
+\begin{tabularx}{\textwidth}{|>{\raggedright\arraybackslash}p{2.7cm}|L|L|}
+\hline
+\textbf{Questão} & \textbf{MySQL} & \textbf{DynamoDB} \\ \hline
+Acesso por chave & \cod{SELECT} em \cod{orders}, \cod{order\_items}, \cod{order\_payments} e \cod{order\_reviews} filtrando por \cod{order\_id} & Uma \cod{Query} com \cod{PK = ORDER\#<id>} \\ \hline
+Inserção de pedido & \cod{INSERT} em \cod{orders}, \cod{order\_items} e \cod{order\_payments} dentro de uma transação & \cod{TransactWriteItems} com os itens de metadados, itens do pedido e pagamento \\ \hline
+Atualização de status & \cod{UPDATE orders SET order\_status ... WHERE order\_id} & \cod{UpdateItem} em \cod{PK = ORDER\#<id>}, \cod{SK = METADATA} \\ \hline
+Carga do dataset & \cod{LOAD DATA LOCAL INFILE} por tabela & \cod{BatchWriteItem} em lotes de 25 itens \\ \hline
+Entregues em jan/2018 & \cod{SELECT} com intervalo em \cod{order\_delivered\_\allowbreak customer\_date} (uso de índice) & \cod{Query} no GSI1 com \cod{GSI1PK = DELIVERED\#\allowbreak 2018-01} \\ \hline
+Estatísticas por forma de pagamento & \cod{SELECT} com \cod{AVG}, \cod{MIN}, \cod{MAX}, \cod{GROUP BY payment\_type} e \cod{ORDER BY} média decrescente & Uma \cod{Query} no GSI2 por tipo de pagamento, com agregação e ordenação na aplicação \\ \hline
+Busca de texto (1 tabela) & \cod{SELECT} em \cod{order\_reviews} com \cod{LIKE '\%atraso\%'} & \cod{Scan} com filtro \cod{contains} no comentário \\ \hline
+Busca de texto (2 tabelas) & \cod{JOIN} de \cod{orders} e \cod{customers} com \cod{LIKE '\%sao\%'} na cidade & \cod{Scan} com filtro \cod{contains} na cidade, desnormalizada no item do pedido \\ \hline
+Agregação por UF (3 tabelas) & \cod{JOIN} de \cod{order\_items}, \cod{orders} e \cod{customers}, com \cod{AVG}, \cod{MIN}, \cod{MAX} e \cod{GROUP BY customer\_state} & \cod{Scan} dos itens e dos pedidos, com junção, agregação e ordenação na aplicação \\ \hline
+\end{tabularx}
+\end{table}
+
+\clearpage
+\section{Resultados Detalhados}
+\label{anexo:resultados}
+
+Resultados da execução preliminar descrita na Seção~4.3. Em todas as questões,
+os dois bancos retornaram o mesmo número de linhas.
+
+\begin{table}[htbp]
+\centering
+\caption{Tempo de carga por entidade (s)}
+\label{tab:carga}
+\small
+\begin{tabular}{|l|r|r|r|}
+\hline
+\textbf{Entidade} & \textbf{Registros} & \textbf{MySQL} & \textbf{DynamoDB} \\ \hline
+Clientes   & 99.441  & 1,79  & 95,79  \\ \hline
+Produtos   & 32.951  & 0,51  & 32,16  \\ \hline
+Vendedores & 3.095   & 0,17  & 4,06   \\ \hline
+Pedidos    & 99.441  & 2,33  & 102,65 \\ \hline
+Itens      & 112.650 & 2,15  & 109,12 \\ \hline
+Pagamentos & 103.886 & 1,49  & 98,83  \\ \hline
+Avaliações & 99.224  & 1,86  & 97,60  \\ \hline
+\textbf{Total} & \textbf{550.688} & \textbf{10,30} & \textbf{540,23} \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Tempo médio das consultas e número de linhas retornadas (ms, média de 3 execuções)}
+\label{tab:consultas-completa}
+\small
+\begin{tabular}{|l|r|r|r|r|}
+\hline
+\textbf{Questão} & \textbf{Linhas} & \textbf{MySQL} & \textbf{DynamoDB} & \textbf{Razão} \\ \hline
+Acesso por chave                  & 4      & 9,25   & 599,70    & 65$\times$  \\ \hline
+Inserção de pedido                & 4      & 17,52  & 174,83    & 10$\times$  \\ \hline
+Atualização de status             & 1      & 11,26  & 161,45    & 14$\times$  \\ \hline
+Entregues em jan/2018             & 6.597  & 43,71  & 1.541,95  & 35$\times$  \\ \hline
+Estatísticas por pagamento        & 5      & 45,19  & 22.441,57 & 497$\times$ \\ \hline
+Busca de texto (1 tabela)         & 305    & 69,08  & 23.044,77 & 334$\times$ \\ \hline
+Busca de texto (2 tabelas)        & 21.092 & 295,94 & 23.674,01 & 80$\times$  \\ \hline
+Agregação por UF (3 tabelas)      & 27     & 775,44 & 40.423,14 & 52$\times$  \\ \hline
+\end{tabular}
+\end{table}
+
+\end{document}

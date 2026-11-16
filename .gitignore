@@ -1,0 +1,8 @@
+# dados do Olist: baixar do Kaggle (não versionar)
+dados/*.csv
+dados/*.zip
+# resultados gerados a cada execução
+resultados_carga*.csv
+resultados_consultas.csv
+__pycache__/
+.venv/
